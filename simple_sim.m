@@ -16,13 +16,32 @@
 %% Setup 
 clear
 
+% Actuator Jacobians
+
+rng(1)
+% rt is the position vector of each thruster, at is the thrust axis
+rt1 = 5*rand(3,1);
+at1 = rand(3,1); at1 = at1/norm(at1);
+rt2 = 5*rand(3,1);
+at2 = rand(3,1); at2 = at2/norm(at2);
+rt3 = 5*rand(3,1);
+at3 = rand(3,1); at3 = at3/norm(at3);
+
+% thruster actuator jacobian
+B_t = [cross(rt1,at1),cross(rt2,at2),cross(rt3,at3)];
+invB_t = inv(B_t);
+
+% momentum wheel jacobian
+B_w = eye(3);
+invB_w = inv(B_w);
+
 % spacecraft inertia properties 
 J = diag([100 200 300]);
 invJ = diag([1/100 1/200 1/300]);
 
 % timing stuff
 samp_rate = 100;                                  % hz
-t_f = 20;                                         % s
+t_f = 70;                                         % s
 t_vec = 0:1/samp_rate:(t_f-(1/samp_rate));
 
 % initial conditions 
@@ -45,12 +64,12 @@ for i = 1:length(t_vec)
     % --------------------RL ALG SPOT------------------------------------
     
     % controller
-    [init] = controller(init,'detumble');
+    [init] = controller(init,'detumble',B_t,invB_t);
     
     % --------------------RL ALG SPOT------------------------------------
     
     %propagate 1/samp_rate
-    [~,y] = ode45(@trajODE,[0,1/samp_rate],init);
+    [~,y] = ode45(@(t,X) trajODE(t,X,B_w,B_t),[0,1/samp_rate],init);
    
     %reset initial conditions 
     init = y(end,:)';
@@ -114,22 +133,20 @@ hold off
 
 %% Supporting functions 
 
-function [X_dot] = trajODE(t,X)
+function [X_dot] = trajODE(t,X,B_w,B_t)
 
 % spacecraft inertia properties 
 J = diag([100 200 300]);
 invJ = diag([1/100 1/200 1/300]);
 
-% wheel actuator jacobian
-B_w = eye(3);                       
-
 % unpack state 
 X = X(:);
-quat = X(1:4)/norm(X(1:4));
-omega = X(5:7);
-tau = X(8:10);
-rotor = X(11:13);
-rotor_dot = X(14:16);
+quat = X(1:4)/norm(X(1:4));   % quaternion (scalar last, Kane/Levinson)
+omega = X(5:7);               % N_w_B rad/s
+u = X(8:10);                  % thrust in newtons (1 for each thruster)
+rotor = X(11:13);             % rad/s
+rotor_dot = X(14:16);         % rad/s^2
+tau = B_t * u;                % n*m
 
 % wheel momentum
 rho = B_w*rotor;
@@ -143,15 +160,16 @@ X_dot(11:13) = rotor_dot;
 
 end
 
-function [init] = controller(init,mode)
+function [init] = controller(init,mode,B_t,invB_t)
 
 % unpack state:
 X = init(:);
 quat = X(1:4)/norm(X(1:4));
 omega = X(5:7);
-tau = X(8:10);
+u = X(8:10);
 rotor = X(11:13);
 rotor_dot = X(14:16);
+tau = B_t * u;
 
 % spacecraft inertia properties 
 J = diag([100 200 300]);
@@ -167,13 +185,22 @@ if mode == 'detumble'
     H_N = N_R_B*H_B;
     
     % thrust against the inertial angular momentum
-    max_thrust = 10;
-    tau_out_N = -max_thrust*(H_N/norm(H_N)); % this is a smoother run down
-    %tau_out_N = -max_thrust*sign(H_N);      % this is a more aggressive one
+    max_thrust = 3;
+    tau_out_N = -max_thrust*(H_N/norm(H_N)); 
     tau_out_B = (N_R_B')*tau_out_N;
-    init(8:10) = tau_out_B';
+    u_out = (invB_t * tau_out_B)';
+    u_out = saturate(u_out,max_thrust);
+    init(8:10) = u_out;
     
 end
 
 end
 
+
+function [sat_in] = saturate(sat_in,thresh)
+for i = 1:length(sat_in)
+    if abs(sat_in(i)) > thresh 
+        sat_in(i) = thresh * sign(sat_in(i));
+    end
+end
+end
