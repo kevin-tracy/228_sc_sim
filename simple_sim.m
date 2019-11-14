@@ -13,6 +13,7 @@
 %     - LQR Station Keeping 
 %     - 3D Gausian noise on attitude/angular velocity 
 
+%% Setup 
 clear
 
 % spacecraft inertia properties 
@@ -34,15 +35,19 @@ init = [q_init', w_initial, 0 0 0,0 0 0,0 0 0];
 quat_hist = zeros(4,length(t_vec));
 omega_hist = zeros(3,length(t_vec));
 
-%main loop 
+%% Sim
 for i = 1:length(t_vec)
     
     %store for graphing 
     quat_hist(:,i) = init(1:4);
     omega_hist(:,i) = init(5:7);
     
+    % --------------------RL ALG SPOT------------------------------------
+    
     % controller
     [init] = controller(init,'detumble');
+    
+    % --------------------RL ALG SPOT------------------------------------
     
     %propagate 1/samp_rate
     [~,y] = ode45(@trajODE,[0,1/samp_rate],init);
