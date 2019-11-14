@@ -136,13 +136,7 @@ xlabel('Time (s)')
 ylabel('Angular Velocity (deg/s)')
 hold off
 
-%% testing 
 
-w = [-.7 .3 -.1]
-disc_size = 80; % this means -40 to 40 
-[s] = discretize_state(w,disc_size);
-
-[w] = undiscretize(s,disc_size)
 %% Supporting functions 
 
 function [X_dot] = trajODE(t,X,B_w,B_t)
@@ -231,7 +225,7 @@ s = sub2ind([disc_size,disc_size,disc_size],w(1),w(2),w(3));
 
 end
 
-function [w] = undiscretize(s,disc_size)
+function [w] = undiscretize_state(s,disc_size)
 
 [wx,wy,wz] = ind2sub([disc_size,disc_size,disc_size],s);
 
@@ -239,4 +233,9 @@ w = [wx,wy,wz];
 
 w = deg2rad(w - disc_size/2 - 1);
 
+% TEST
+% w = [-.7 .3 -.1]
+% disc_size = 80; % this means -40 to 40 
+% [s] = discretize_state(w,disc_size);
+% [w] = undiscretize_state(s,disc_size)
 end
