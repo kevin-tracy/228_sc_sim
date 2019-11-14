@@ -41,7 +41,7 @@ invJ = diag([1/100 1/200 1/300]);
 
 % timing stuff
 samp_rate = 100;                                  % hz
-t_f = 20;                                         % s
+t_f = 70;                                         % s
 t_vec = 0:1/samp_rate:(t_f-(1/samp_rate));
 
 % initial conditions 
@@ -54,6 +54,9 @@ init = [q_init', w_initial, 0 0 0,0 0 0,0 0 0];
 quat_hist = zeros(4,length(t_vec));
 omega_hist = zeros(3,length(t_vec));
 
+% state discritization size
+disc_size = 80; % this means from -40 to 40 deg/s
+
 %% Sim
 for i = 1:length(t_vec)
     
@@ -62,6 +65,8 @@ for i = 1:length(t_vec)
     omega_hist(:,i) = init(5:7);
     
     % --------------------RL ALG SPOT------------------------------------
+    
+    [s] = discretize_state(w,disc_size)
     
     % controller
     [init] = controller(init,'detumble',B_t,invB_t);
@@ -130,7 +135,13 @@ xlabel('Time (s)')
 ylabel('Angular Velocity (deg/s)')
 hold off
 
+%% testing 
 
+w = [-.7 .3 -.1]
+disc_size = 80; % this means -40 to 40 
+[s] = discretize_state(w,disc_size);
+
+[w] = undiscretize(s,disc_size)
 %% Supporting functions 
 
 function [X_dot] = trajODE(t,X,B_w,B_t)
@@ -185,12 +196,46 @@ if mode == 'detumble'
     H_N = N_R_B*H_B;
     
     % thrust against the inertial angular momentum
-    max_thrust = 10;
-    tau_out_N = -(H_N/norm(H_N)); 
+    max_thrust = 3;
+    tau_out_N = -max_thrust*(H_N/norm(H_N)); 
     tau_out_B = (N_R_B')*tau_out_N;
-    init(8:10) = (invB_t * tau_out_B)';
+    u_out = (invB_t * tau_out_B)';
+    u_out = saturate(u_out,max_thrust);
+    init(8:10) = u_out;
     
 end
 
 end
 
+
+function [sat_in] = saturate(sat_in,thresh)
+for i = 1:length(sat_in)
+    if abs(sat_in(i)) > thresh 
+        sat_in(i) = thresh * sign(sat_in(i));
+    end
+end
+end
+
+function [s] = discretize_state(w,disc_size)
+% disc_size should be a 1x3 vector
+
+% plus or minus 40 deg/s
+w = 1+disc_size/2 + round(rad2deg(w));
+if any(w<0) || any(w>disc_size) || any(w<-disc_size)
+    error('you screwed something up, we have a negative')
+end
+
+s = sub2ind([disc_size,disc_size,disc_size],w(1),w(2),w(3));
+
+
+end
+
+function [w] = undiscretize(s,disc_size)
+
+[wx,wy,wz] = ind2sub([disc_size,disc_size,disc_size],s);
+
+w = [wx,wy,wz];
+
+w = deg2rad(w - disc_size/2 - 1);
+
+end

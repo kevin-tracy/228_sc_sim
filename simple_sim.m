@@ -54,6 +54,9 @@ init = [q_init', w_initial, 0 0 0,0 0 0,0 0 0];
 quat_hist = zeros(4,length(t_vec));
 omega_hist = zeros(3,length(t_vec));
 
+% state discritization size
+disc_size = 80; % this means from -40 to 40 deg/s
+
 %% Sim
 for i = 1:length(t_vec)
     
@@ -63,6 +66,9 @@ for i = 1:length(t_vec)
     
     % --------------------RL ALG SPOT------------------------------------
     
+    % discretize state (angular velocity) to scalar integer
+    s(i) = discretize_state(omega_hist(:,i),disc_size);
+
     % controller
     [init] = controller(init,'detumble',B_t,invB_t);
     
@@ -130,7 +136,13 @@ xlabel('Time (s)')
 ylabel('Angular Velocity (deg/s)')
 hold off
 
+%% testing 
 
+w = [-.7 .3 -.1]
+disc_size = 80; % this means -40 to 40 
+[s] = discretize_state(w,disc_size);
+
+[w] = undiscretize(s,disc_size)
 %% Supporting functions 
 
 function [X_dot] = trajODE(t,X,B_w,B_t)
@@ -203,4 +215,28 @@ for i = 1:length(sat_in)
         sat_in(i) = thresh * sign(sat_in(i));
     end
 end
+end
+
+function [s] = discretize_state(w,disc_size)
+% disc_size should be a 1x3 vector
+
+% plus or minus 40 deg/s
+w = 1+disc_size/2 + round(rad2deg(w));
+if any(w<0) || any(w>disc_size) || any(w<-disc_size)
+    error('you screwed something up, we have a negative')
+end
+
+s = sub2ind([disc_size,disc_size,disc_size],w(1),w(2),w(3));
+
+
+end
+
+function [w] = undiscretize(s,disc_size)
+
+[wx,wy,wz] = ind2sub([disc_size,disc_size,disc_size],s);
+
+w = [wx,wy,wz];
+
+w = deg2rad(w - disc_size/2 - 1);
+
 end
