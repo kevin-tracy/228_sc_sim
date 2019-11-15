@@ -5,10 +5,10 @@
 % is stored as parametrizations of the ^N R ^B direction cosine matrix.
 
 % the script 'Slew_manuever_script.m' has the following features that can
-% be migrated over to this one easily:
+% be migrated over to this one pretty easily:
 %
 %     - Spline trajectory generation between Modified Rodrigues Parameters
-%     - Eigen Axis Slew
+%     - Eigen-Axis Slew
 %     - Time Variant LQR
 %     - LQR Station Keeping 
 %     - 3D Gausian noise on attitude/angular velocity 
@@ -17,24 +17,7 @@
 clear
 
 % Actuator Jacobians
-
-%% testing region 
-% w_rads = [.2 -.3 .5];
-% w_max_deg = 50;
-% action_space_size = 2*w_max_deg + 1;
-% [s] = disc_state(w_rads,w_max_deg)
-clear
-
-% tau_max = 5;
-% tau = [2.1 3.2 -4.5];
-% tau = [-5 -5 -5]
-% %action_space_size = 2*tau_max + 1;
-% 
-% a = disc_action(tau,tau_max)
-% tau = tau_from_a(a,tau_max)
-
-%%
-rng(1)
+rng(2)
 % rt is the position vector of each thruster, at is the thrust axis
 rt1 = 5*rand(3,1);
 at1 = rand(3,1); at1 = at1/norm(at1);
@@ -54,24 +37,24 @@ invB_w = inv(B_w);
 % spacecraft inertia properties 
 J = diag([100 200 300]);
 invJ = diag([1/100 1/200 1/300]);
+J_measured = J*expm(hat(.05*randn(3,1)));
 
 % timing stuff
 samp_rate = 100;                                  % hz
-t_f = 50;                                         % s
+t_f = 130;                                         % s
 t_vec = 0:1/samp_rate:(t_f-(1/samp_rate));
 
 % initial conditions 
-%q_init = randq;
-q_init = ([1 2 3 4]/norm([1 2 3 4]))';
-w_initial = deg2rad([30 15 25]);                   % rad/s
+q_init = randq;
+w_initial = deg2rad([30 15 -25]);                   % rad/s
 init = [q_init', w_initial, 0 0 0,0 0 0,0 0 0];
 
 % allocate arrays 
 quat_hist = zeros(4,length(t_vec));
 omega_hist = zeros(3,length(t_vec));
 
-% state discritization size
-
+% noise
+%V_quat = .1*eye(3);
 
 % Q learning Stuff
 w_max_deg = 50;
@@ -81,22 +64,23 @@ state_space_size = 2*w_max_deg + 1;
 Q = zeros(state_space_size^3,action_space_size^3);
 N = zeros(state_space_size^3,action_space_size^3);
 gamma = .9;
-
+H_B_t = zeros(1,length(t_vec));
 
 %% Sim
 for i = 1:length(t_vec)
     
-    %store for graphing 
+    % store for graphing 
     quat_hist(:,i) = init(1:4);
     omega_hist(:,i) = init(5:7);
     
-    H_N_t = norm(dcm_from_q(quat_hist(:,i))*(J*omega_hist(:,i)));
-    % --------------------RL ALG SPOT------------------------------------
-    
+    % angular momentum at time t
+    H_B_t(i) = norm((J_measured*omega_hist(:,i)));
+
+    % discretized state s_t
     s_t = disc_state(init(5:7),w_max_deg);
     
     % epsilon greedy exploration/exploitation
-    epsilon = .5;
+    epsilon = .8;
     random_number = rand;
     
     if random_number < epsilon % go with our Q for best action
@@ -108,40 +92,28 @@ for i = 1:length(t_vec)
     % update N(s,a) count
     N(s_t,a_t ) = N(s_t,a_t ) + 1;
     
-    % get control 
+    % get tau from a 
     tau = tau_from_a(a_t,tau_max);
     init(8:10) = tau;
     
-    
-    
-    
-    % discretize state (angular velocity) to scalar integer
-    %s(i) = discretize_state(omega_hist(:,i),disc_size);
-
-    % controller
-%     [init] = controller(init,'detumble',B_t,invB_t);
-    
-    % --------------------RL ALG SPOT------------------------------------
-    
-    %propagate 1/samp_rate
+    % propagate 1/samp_rate
     [~,y] = ode45(@(t,X) trajODE(t,X,B_w,B_t),[0,1/samp_rate],init);
    
-    %reset initial conditions 
+    % reset initial conditions 
     init = y(end,:)';
     
     % s_tp1
     s_tp1 = disc_state(init(5:7),w_max_deg);
     
-    H_N_tp1 = norm(dcm_from_q(init(1:4))*(J*init(5:7)));
-    totalH(i) = H_N_tp1;
+    % reward 
+    H_B_tp1 = norm((J_measured*init(5:7)));
+    r_t = (H_B_t(i) - H_B_tp1); % reward if we lose angular momentum
     
-    r_t = (H_N_t - H_N_tp1); % reward if we lose angular momentum
-    
+    % Q learning Update
     alpha = 1/N(s_t,a_t);
     [~,Q_max_stp1] = max_from_Q(Q,s_tp1);
     Q(s_t,a_t) = Q(s_t,a_t) + alpha*(r_t + gamma*Q_max_stp1 - Q(s_t,a_t));
     
-      
 end
 
 %% Post Processing 
@@ -195,12 +167,12 @@ plot(t_vec,rad2deg(H_N(2,:)));
 plot(t_vec,rad2deg(H_N(3,:)));
 legend('H nx','H ny','H nz')
 xlabel('Time (s)')
-ylabel('Angular Velocity (deg/s)')
+ylabel('Angular Momentum (kg m^2/s)')
 hold off
 
 figure
 hold on 
-plot(t_vec,totalH)
+plot(t_vec,H_B_t)
 hold off
 
 %% Supporting functions 
@@ -217,9 +189,10 @@ quat = X(1:4)/norm(X(1:4));   % quaternion (scalar last, Kane/Levinson)
 omega = X(5:7);               % N_w_B rad/s
 u = X(8:10);                  % thrust in newtons (1 for each thruster)
 rotor = X(11:13);             % rad/s
-rotor_dot = X(14:16);         % rad/s^2
-%tau = B_t * u;  % n*m
-tau = 3*u;
+%rotor_dot = X(14:16);  
+rotor_dot = B_w*u ;             % rad/s^2
+%tau = B_t * u;                % n*m
+tau = [0;0;0];
 
 % wheel momentum
 rho = B_w*rotor;
@@ -233,64 +206,6 @@ X_dot(11:13) = rotor_dot;
 
 end
 
-% function [init] = controller(init,mode,B_t,invB_t)
-% 
-% % unpack state:
-% X = init(:);
-% quat = X(1:4)/norm(X(1:4));
-% omega = X(5:7);
-% u = X(8:10);
-% rotor = X(11:13);
-% rotor_dot = X(14:16);
-% tau = B_t * u;
-% 
-% % spacecraft inertia properties 
-% J = diag([100 200 300]);
-% invJ = diag([1/100 1/200 1/300]);
-% 
-% if mode == 'detumble'
-%     
-%     % get attitude 
-%     N_R_B = dcm_from_q(quat);
-%     
-%     % angular momentums 
-%     H_B = J*omega;
-%     H_N = N_R_B*H_B;
-%     
-%     % thrust against the inertial angular momentum
-%     max_thrust = 3;
-%     tau_out_N = -max_thrust*(H_N/norm(H_N)); 
-%     tau_out_B = (N_R_B')*tau_out_N;
-%     u_out = (invB_t * tau_out_B)';
-%     u_out = saturate(u_out,max_thrust);
-%     init(8:10) = u_out;
-%     
-% end
-% 
-% end
-
-
-% function [sat_in] = saturate(sat_in,thresh)
-% for i = 1:length(sat_in)
-%     if abs(sat_in(i)) > thresh 
-%         sat_in(i) = thresh * sign(sat_in(i));
-%     end
-% end
-% end
-
-function [s] = discretize_state(w,disc_size)
-% disc_size should be a 1x3 vector
-
-% plus or minus 40 deg/s
-w = 1+disc_size/2 + round(rad2deg(w));
-if any(w<0) || any(w>disc_size) || any(w<-disc_size)
-    error('you screwed something up, we have a negative')
-end
-
-s = sub2ind([disc_size,disc_size,disc_size],w(1),w(2),w(3));
-
-
-end
 
 function [s] = disc_state(w_rads,w_max_deg)
 % disc_size should be a 1x3 vector
@@ -310,41 +225,6 @@ s = sub2ind([disc_size,disc_size,disc_size],w(1),w(2),w(3));
 
 
 end
-
-% function [s] = disc_action(w_rads,w_max_deg)
-% % disc_size should be a 1x3 vector
-% w = round(rad2deg((w_rads(:))));
-% 
-% for i = 1:length(w)
-%     if abs((w(i)))>w_max_deg 
-%         error('outside state space')
-%     end
-% end
-% 
-% w = w_max_deg + w + 1;
-% disc_size = w_max_deg*2 +1;
-% 
-% 
-% s = sub2ind([disc_size,disc_size,disc_size],w(1),w(2),w(3));
-% 
-% 
-% end
-
-
-% function [w] = undiscretize_state(s,disc_size)
-% 
-% [wx,wy,wz] = ind2sub([disc_size,disc_size,disc_size],s);
-% 
-% w = [wx,wy,wz];
-% 
-% w = deg2rad(w - disc_size/2 - 1);
-% 
-% % TEST
-% % w = [-.7 .3 -.1]
-% % disc_size = 80; % this means -40 to 40 
-% % [s] = discretize_state(w,disc_size);
-% % [w] = undiscretize_state(s,disc_size)
-% end
 
 
 function [a,Q_max] = max_from_Q(Q,s)
@@ -396,5 +276,16 @@ disc_size = tau_max*2 +1;
 
 a = sub2ind([disc_size,disc_size,disc_size],tau(1),tau(2),tau(3));
 
+
+end
+
+function noisy_quat = quat_noise(quat,V_quat)
+
+%noise 
+phi_noise = mvnrnd([0 0 0],V_quat)';
+q_noise = q_from_phi(phi_noise);
+
+
+noisy_quat = qdot(q_noise,quat);
 
 end
