@@ -1,0 +1,181 @@
+%% 1d sim 
+clear
+
+
+%%
+% omega_deg = 100
+% omega_deg_max = 100;
+% s = discretize_state(omega_deg, omega_deg_max)
+
+% u = -5;
+% u_max = 5;
+% a = discretize_action(u,u_max)
+% u = u_from_a(a,u_max)
+%% 
+% timing 
+samp_rate = 100;
+t_vec = 0:(1/samp_rate):20;
+
+% initial conditions 
+init = [0 deg2rad(5) 0];
+
+% pre allocate 
+x_hist = zeros(3,length(t_vec));
+omega_deg_max = 100;
+u_max = 5;
+state_space_size = 2*omega_deg_max + 1;
+action_space_size = 2*u_max + 1;
+
+% Q learning stuff
+Q = zeros(state_space_size,action_space_size);
+N_sa = zeros(state_space_size,action_space_size);
+gamma = .9;
+
+
+for i = 1:length(t_vec)
+    
+    % store for plotting 
+    x_hist(:,i) = [wrapTo2Pi(init(1));init(2:3)'];
+    
+    %% controller 
+    init = controller(init,omega_deg_max);
+    
+    %rand_a = 
+    epsilon = .7;
+    random_number = rand;
+    
+    
+    if random_number < epsilon % go with our Q for best action
+        [a_t,~] = max_from_Q(Q,s);
+    else % go with random action
+        a_t = randi(action_space_size);
+    end
+    
+    s_t = discretize_state(rad2deg(init(2)), omega_deg_max);
+   
+    N(s_t,a_t ) = N(s_t,a_t ) + 1;
+    
+    
+    
+    
+    %% Q learning 
+    % action at a_t
+    %a_t = discretize_action(init(3),u_max);
+    
+    % omega at s_t
+    omega_st = init(2);
+    
+    % sim 
+    [~,y] = ode45(@spinner_ode,[0 1/samp_rate],init);
+    init = y(end,:);
+    
+    % omega at s_t+1
+    omega_stp1 = init(2);
+    s_tp1 = discretize_state(rad2deg(init(2)), omega_deg_max);
+    % reward function 
+    r_t = 1e6*(omega_st - omega_stp1);
+    
+    % update Q 
+    alpha = 1/N(s_t,a_t);
+    [~,Q_max_stp1] = max_from_Q(Q,s_tp1);
+    
+    Q(s_t,a_t) = Q(s_t,a_t) + alpha*(r_t + gamma*Q_max_stp1 - 
+    
+    
+end
+
+%% plotting 
+figure
+hold on 
+plot(t_vec,x_hist(1,:))
+title('Theta')
+hold off
+
+figure
+hold on 
+plot(t_vec,x_hist(2,:))
+title('Omega')
+hold off
+
+
+
+
+function xdot = spinner_ode(t,x)
+
+% MOI
+Izz = 100;
+
+% unpack state
+% theta = x(1);
+omega = x(2);
+u = x(3);
+
+% dynamics
+xdot = zeros(size(x));
+xdot(1) = omega;  % theta dot
+xdot(2) = u/Izz;  % theta double dot 
+%xdot(3) = 0 % already specified
+
+end
+
+function s = discretize_state(omega_deg, omega_deg_max)
+
+if abs(round(omega_deg)) > omega_deg_max
+    error('outside the state space')
+end
+
+s = round(omega_deg) + 1 + omega_deg_max;
+
+
+end
+
+function a = discretize_action(u, u_max)
+
+if abs(round(u)) > u_max
+    error('outside the action space')
+end
+
+a = round(u) + 1 + u_max;
+
+
+end
+
+function u = u_from_a(a,u_max)
+
+u = a - u_max -1;
+
+end
+
+function init = controller(init,omega_deg_max)
+
+omega_deg = rad2deg(init(2));
+
+s = discretize_state(omega_deg, omega_deg_max);
+
+% control law 
+k = 1;
+u = -k*omega_deg;
+init(3) = u;
+
+
+
+end
+
+function [a,Q_max] = max_from_Q(Q,s)
+
+% row of interest 
+vec = Q(s,:);
+
+% maximum Q in the row
+Q_max = max(vec);
+
+% find list of actions that produce this Q max
+a_list = find(vec == Q_max);
+
+% if there is a tie, or all zeros, choose a random
+if length(a_list) > 1
+    a = a_list(randi(length(a_list)));
+else
+    a = a_list(1);
+end
+end
