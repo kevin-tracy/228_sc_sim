@@ -140,26 +140,28 @@ end
 
 
 
-for i = 1:length(quat_hist)
-    
-    [r,p,y] = quat2angle([quat_hist(4,i)' ,quat_hist(1:3,i)'] );
-    
-    simdata(i,:) = [2*t_vec(i), 0,0,0,r,p,y];
-    
-    
-    
-    
-end
 
 
-h = Aero.Animation;
-h.FramesPerSecond = 10;
-h.TimeScaling = 5;
-idx1 = h.createBody('pa24-250_orange.ac','Ac3d');
-%load simdata;
-h.Bodies{1}.TimeSeriesSource = simdata;
-h.show();
-h.play();
+% for i = 1:length(quat_hist)
+%     
+%     [r,p,y] = quat2angle([quat_hist(4,i)' ,quat_hist(1:3,i)'] );
+%     
+%     simdata(i,:) = [2*t_vec(i), 0,0,0,r,p,y];
+%     
+%     
+%     
+%     
+% end
+% 
+% 
+% h = Aero.Animation;
+% h.FramesPerSecond = 10;
+% h.TimeScaling = 5;
+% idx1 = h.createBody('pa24-250_orange.ac','Ac3d');
+% %load simdata;
+% h.Bodies{1}.TimeSeriesSource = simdata;
+% h.show();
+% h.play();
 
 %% Plotting 
 figure
