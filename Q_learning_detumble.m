@@ -34,6 +34,10 @@ invB_t = inv(B_t);
 B_w = eye(3);
 invB_w = inv(B_w);
 
+% actuator selection (1 for thruster, 2 for wheels)
+actuator = 1; % thrusters
+%actuator = 2; % reaction wheels
+
 % spacecraft inertia properties 
 J = diag([100 200 300]);
 invJ = diag([1/100 1/200 1/300]);
@@ -89,6 +93,11 @@ for i = 1:length(t_vec)
         a_t = randi(action_space_size^3);
     end
     
+    % check to see if i've done the action before 
+    if sum(N(s_t,a_t)>0) == length(N(s_t,a_t )) % this means i've tried them all 
+        [a_t,~] = max_from_Q(Q,s_t);
+    end
+    
     % update N(s,a) count
     N(s_t,a_t ) = N(s_t,a_t ) + 1;
     
@@ -97,12 +106,12 @@ for i = 1:length(t_vec)
     init(8:10) = tau;
     
     % propagate 1/samp_rate
-    [~,y] = ode45(@(t,X) trajODE(t,X,B_w,B_t),[0,1/samp_rate],init);
+    [~,y] = ode45(@(t,X) trajODE(t,X,B_w,B_t,actuator),[0,1/samp_rate],init);
    
     % reset initial conditions 
     init = y(end,:)';
     
-    % s_tp1
+    % s_{t+1}
     s_tp1 = disc_state(init(5:7),w_max_deg);
     
     % reward 
@@ -138,18 +147,18 @@ end
 %% animation 
 
 
-figure
-hold on
-axis([-2 2 -2 2 -2 2])
-for i = 1:length(t_vec)
-    
-    axis([-2 2 -2 2 -2 2])
-    cla
-    N_q_B = quat_hist(:,i);
-    cube_plot([0,0,0],1,1,1,'r',N_q_B);
-    axis([-2 2 -2 2 -2 2])
-    pause(.00005)
-end
+% figure
+% hold on
+% axis([-2 2 -2 2 -2 2])
+% for i = 1:length(t_vec)
+%     
+%     axis([-2 2 -2 2 -2 2])
+%     cla
+%     N_q_B = quat_hist(:,i);
+%     cube_plot([0,0,0],1,1,1,'r',N_q_B);
+%     axis([-2 2 -2 2 -2 2])
+%     pause(.00005)
+% end
 
 
 
@@ -209,16 +218,16 @@ xlabel('Time (s)')
 ylabel('Angular Momentum (kg m^2/s)')
 hold off
 
-figure
-hold on 
-plot(t_vec,H_B_t)
-hold off
+% figure
+% hold on 
+% plot(t_vec,H_B_t)
+% hold off
 
 
 
 %% Supporting functions 
 
-function [X_dot] = trajODE(t,X,B_w,B_t)
+function [X_dot] = trajODE(t,X,B_w,B_t,actuator)
 
 % spacecraft inertia properties 
 J = diag([100 200 300]);
@@ -230,11 +239,18 @@ quat = X(1:4)/norm(X(1:4));   % quaternion (scalar last, Kane/Levinson)
 omega = X(5:7);               % N_w_B rad/s
 u = X(8:10);                  % thrust in newtons (1 for each thruster)
 rotor = X(11:13);             % rad/s
-%rotor_dot = X(14:16);  
-rotor_dot = B_w*u ;             % rad/s^2
-%tau = B_t * u;                % n*m
-tau = [0;0;0];
+% %rotor_dot = X(14:16);  
+% rotor_dot = B_w*u ;             % rad/s^2
+% %tau = B_t * u;                % n*m
+% tau = [0;0;0];
 
+if actuator == 1
+    rotor_dot = [0;0;0];
+    tau = B_t*u;
+else
+    rotor_dot = B_w*u ;
+    tau = [0;0;0];
+end
 % wheel momentum
 rho = B_w*rotor;
 rho_dot = B_w*rotor_dot;

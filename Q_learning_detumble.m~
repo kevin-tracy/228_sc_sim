@@ -34,14 +34,18 @@ invB_t = inv(B_t);
 B_w = eye(3);
 invB_w = inv(B_w);
 
+% actuator selection (1 for thruster, 2 for wheels)
+%actuator = 1; % thrusters
+actuator = 2; % reaction wheels
+
 % spacecraft inertia properties 
 J = diag([100 200 300]);
 invJ = diag([1/100 1/200 1/300]);
-J_measured = J;%J*expm(hat(.05*randn(3,1)));
+J_measured = J*expm(hat(.05*randn(3,1)));
 
 % timing stuff
 samp_rate = 100;                                  % hz
-t_f = 200;                                         % s
+t_f = 130;                                         % s
 t_vec = 0:1/samp_rate:(t_f-(1/samp_rate));
 
 % initial conditions 
@@ -66,8 +70,6 @@ N = zeros(state_space_size^3,action_space_size^3);
 gamma = .9;
 H_B_t = zeros(1,length(t_vec));
 
-for kk = 1:100
-    init = [q_init', w_initial, 0 0 0,0 0 0,0 0 0];
 %% Sim
 for i = 1:length(t_vec)
     
@@ -82,7 +84,7 @@ for i = 1:length(t_vec)
     s_t = disc_state(init(5:7),w_max_deg);
     
     % epsilon greedy exploration/exploitation
-    epsilon = .2;
+    epsilon = .8;
     random_number = rand;
     
     if random_number < epsilon % go with our Q for best action
@@ -104,12 +106,12 @@ for i = 1:length(t_vec)
     init(8:10) = tau;
     
     % propagate 1/samp_rate
-    [~,y] = ode45(@(t,X) trajODE(t,X,B_w,B_t),[0,1/samp_rate],init);
+    [~,y] = ode45(@(t,X) trajODE(t,X,B_w,B_t,actuator),[0,1/samp_rate],init);
    
     % reset initial conditions 
     init = y(end,:)';
     
-    % s_tp1
+    % s_{t+1}
     s_tp1 = disc_state(init(5:7),w_max_deg);
     
     % reward 
@@ -142,13 +144,21 @@ for i = 1:length(t_vec)
     
 end
 
-H_cell{kk} = H_N;
-
-end
-
 %% animation 
 
 
+% figure
+% hold on
+% axis([-2 2 -2 2 -2 2])
+% for i = 1:length(t_vec)
+%     
+%     axis([-2 2 -2 2 -2 2])
+%     cla
+%     N_q_B = quat_hist(:,i);
+%     cube_plot([0,0,0],1,1,1,'r',N_q_B);
+%     axis([-2 2 -2 2 -2 2])
+%     pause(.00005)
+% end
 
 
 
@@ -175,90 +185,49 @@ end
 % h.play();
 
 %% Plotting 
-% figure
-% hold on 
-% title('Quaternion')
-% plot(t_vec,quat_hist(1,:));
-% plot(t_vec,quat_hist(2,:));
-% plot(t_vec,quat_hist(3,:));
-% plot(t_vec,quat_hist(4,:));
-% legend('q_1','q_2','q_3','q_4')
-% xlabel('Time (s)')
-% hold off
-% 
-% figure
-% hold on 
-% title('Angular Velocity')
-% plot(t_vec,rad2deg(omega_hist(1,:)));
-% plot(t_vec,rad2deg(omega_hist(2,:)));
-% plot(t_vec,rad2deg(omega_hist(3,:)));
-% legend('\omega_x','\omega_y','\omega_z')
-% xlabel('Time (s)')
-% ylabel('Angular Velocity (deg/s)')
-% hold off
-
-% figure
-% hold on 
-% title('Angular Momentum (Expressed in Inertial Basis N)')
-% plot(t_vec,rad2deg(H_N(1,:)));
-% plot(t_vec,rad2deg(H_N(2,:)));
-% plot(t_vec,rad2deg(H_N(3,:)));
-% legend('H nx','H ny','H nz')
-% xlabel('Time (s)')
-% ylabel('Angular Momentum (kg m^2/s)')
-% hold off
-
-% figure
-% hold on 
-% plot(t_vec,H_B_t,'Color',[1 0 0])
-% hold off
+figure
+hold on 
+title('Quaternion')
+plot(t_vec,quat_hist(1,:));
+plot(t_vec,quat_hist(2,:));
+plot(t_vec,quat_hist(3,:));
+plot(t_vec,quat_hist(4,:));
+legend('q_1','q_2','q_3','q_4')
+xlabel('Time (s)')
+hold off
 
 figure
 hold on 
-title('Q-Learning Spacecraft Reaction Wheel Detumble (100 Trials)')
+title('Angular Velocity')
+plot(t_vec,rad2deg(omega_hist(1,:)));
+plot(t_vec,rad2deg(omega_hist(2,:)));
+plot(t_vec,rad2deg(omega_hist(3,:)));
+legend('\omega_x','\omega_y','\omega_z')
+xlabel('Time (s)')
+ylabel('Angular Velocity (deg/s)')
+hold off
 
-% rgb1 = [117 58 136]/255;
-% rgb2 = [204 43 94]/255;
-% rgb1 = [220 36 48]/255;
-% rgb2 = [123 67 151]/255;
-rgb1 = [29 38 113]/255;
-rgb2 = [195 55 100]/255;
-for kk = 1:length(H_cell)
-%     if kk <=50
-%         rgb_vec = [255,5.1*kk,0]/255;
-%     else
-%         rgb_vec = [255 - (kk-50)*5.1,255,0]/255;
-%     end
-%     
-
-rgb_vec = color_interp(rgb1,rgb2,length(H_cell),kk);
-    
-    
-    
-plot(t_vec,rad2deg(H_cell{kk}(1,:)),'Color',rgb_vec);
-plot(t_vec,rad2deg(H_cell{kk}(2,:)),'Color',rgb_vec);
-plot(t_vec,rad2deg(H_cell{kk}(3,:)),'Color',rgb_vec);
-end
-
-h(1) = plot(NaN,NaN,'Color',rgb1);
-h(2) = plot(NaN,NaN,'Color',rgb2);
-%legend(h, 'Run 1','Run 100');
-[~,hObj]=legend(h, 'Run 1','Run 100');           % return the handles array
-hL=findobj(hObj,'type','line');  % get the lines, not text
-set(hL,'linewidth',6) 
-
-%legend('H nx','H ny','H nz')
+figure
+hold on 
+title('Angular Momentum (Expressed in Inertial Basis N)')
+plot(t_vec,rad2deg(H_N(1,:)));
+plot(t_vec,rad2deg(H_N(2,:)));
+plot(t_vec,rad2deg(H_N(3,:)));
+legend('H nx','H ny','H nz')
 xlabel('Time (s)')
 ylabel('Angular Momentum (kg m^2/s)')
 hold off
-%saveas(gcf,'detumble_wheel.eps','epsc')
 
+% figure
+% hold on 
+% plot(t_vec,H_B_t)
+% hold off
 
 
 
 %% Supporting functions 
 
-function [X_dot] = trajODE(t,X,B_w,B_t)
+function [X_dot] = trajODE(t,X,B_w,B_t,actuator)
 
 % spacecraft inertia properties 
 J = diag([100 200 300]);
@@ -275,6 +244,8 @@ rotor_dot = B_w*u ;             % rad/s^2
 %tau = B_t * u;                % n*m
 tau = [0;0;0];
 
+if actuator = 1
+    
 % wheel momentum
 rho = B_w*rotor;
 rho_dot = B_w*rotor_dot;
@@ -368,14 +339,5 @@ q_noise = q_from_phi(phi_noise);
 
 
 noisy_quat = qdot(q_noise,quat);
-
-end
-
-
-function rgb_kk = color_interp(rgb1,rgb2,total_kk,kk)
-
-delta_rgb = rgb2-rgb1;
-
-rgb_kk = rgb1 + (kk/total_kk)*delta_rgb;
 
 end

@@ -10,7 +10,7 @@ Q = zeros(state_space_size,action_space_size);
 N = zeros(state_space_size,action_space_size);
 gamma = .9;
 
-for kk = 1:10
+for kk = 1:100
 % timing 
 samp_rate = 10;
 tf = 100;
@@ -71,6 +71,7 @@ for i = 1:length(t_vec)
     % omega at s_t+1
     omega_stp1 = init(2);
     s_tp1 = discretize_state(rad2deg(init(2)), omega_deg_max);
+    
     % reward function 
     r_t = 1e6*(abs(omega_st) - abs(omega_stp1));
     
@@ -103,27 +104,28 @@ end
 
 %% animation 
 
-% r = 1;
-% theta = x_hist(1,:);
-% figure
-% hold on 
-% for i = 1:length(theta)
-%     
-%     N_R_T = [cos(theta(i)) -sin(theta(i));...
-%              sin(theta(i))  cos(theta(i))];
-%     thrust = [0; u_hist(i)];
-%     
-%     thrust_N = N_R_T*thrust/15;
-%     cla
-%     xlim([-1.4 1.4])
-%     ylim([-1.2 1.2])
-%     %axis equal
-%     
-% plot([0 r*cos(theta(i))],[0 r*sin(theta(i))],'LineWidth',5)
-% plot(0, 0, '.', 'MarkerSize', 50)
-% quiver(r*cos(theta(i)),r*sin(theta(i)),thrust_N(1),thrust_N(2),'LineWidth',3,'MaxHeadSize',5)
-% pause(.01)
-% end
+
+r = 1;
+theta = x_hist(1,:);
+figure
+hold on 
+for i = 1:length(theta)
+    
+    N_R_T = [cos(theta(i)) -sin(theta(i));...
+             sin(theta(i))  cos(theta(i))];
+    thrust = [0; u_hist(i)];
+    
+    thrust_N = N_R_T*thrust/15;
+    cla
+    xlim([-1.4 1.4])
+    ylim([-1.2 1.2])
+    %axis equal
+    
+plot([0 r*cos(theta(i))],[0 r*sin(theta(i))],'LineWidth',5)
+plot(0, 0, '.', 'MarkerSize', 50)
+quiver(r*cos(theta(i)),r*sin(theta(i)),thrust_N(1),thrust_N(2),'LineWidth',3,'MaxHeadSize',5)
+pause(.01)
+end
 
 
 
