@@ -138,6 +138,18 @@ end
 %% animation 
 
 
+figure
+hold on
+axis([-2 2 -2 2 -2 2])
+for i = 1:length(t_vec)
+    
+    axis([-2 2 -2 2 -2 2])
+    cla
+    N_q_B = quat_hist(:,i);
+    cube_plot([0,0,0],1,1,1,'r',N_q_B);
+    axis([-2 2 -2 2 -2 2])
+    pause(.00005)
+end
 
 
 
@@ -201,6 +213,8 @@ figure
 hold on 
 plot(t_vec,H_B_t)
 hold off
+
+
 
 %% Supporting functions 
 
